@@ -29,7 +29,7 @@ export class ClockSync {
       const t3 = Date.now();
       const t0 = data.clientTime;
       const t1 = data.serverTime;
-      const t2 = data.serverTime; // server timestamp when pong emitted
+      const t2 = data.serverTime;
 
       const rtt = Math.max(0, t3 - t0);
       const offset = ((t1 - t0) + (t2 - t3)) / 2;
@@ -42,30 +42,28 @@ export class ClockSync {
     this.offsetSamples.push(offset);
     this.rttSamples.push(rtt);
 
-    if (this.offsetSamples.length > 20) {
+    if (this.offsetSamples.length > 30) {
       this.offsetSamples.shift();
       this.rttSamples.shift();
     }
 
-    // Filter samples with lower RTT for higher accuracy
-    const minRTT = Math.min(...this.rttSamples);
-    const validOffsets: number[] = [];
+    // Keep lowest 60% RTT samples to filter network jitter
+    const samplePairs = this.offsetSamples.map((off, idx) => ({
+      offset: off,
+      rtt: this.rttSamples[idx]
+    }));
 
-    for (let i = 0; i < this.rttSamples.length; i++) {
-      // Keep samples within 20ms or 1.5x of min RTT
-      if (this.rttSamples[i] <= Math.max(minRTT + 20, minRTT * 1.5)) {
-        validOffsets.push(this.offsetSamples[i]);
-      }
-    }
+    samplePairs.sort((a, b) => a.rtt - b.rtt);
+    const bestSamples = samplePairs.slice(0, Math.max(1, Math.floor(samplePairs.length * 0.6)));
 
-    const targetList = validOffsets.length > 0 ? validOffsets : this.offsetSamples;
-    targetList.sort((a, b) => a - b);
+    // Calculate median offset from best samples
+    bestSamples.sort((a, b) => a.offset - b.offset);
+    const mid = Math.floor(bestSamples.length / 2);
+    
+    this.currentOffset = bestSamples.length % 2 !== 0
+      ? bestSamples[mid].offset
+      : (bestSamples[mid - 1].offset + bestSamples[mid].offset) / 2;
 
-    // Median offset
-    const mid = Math.floor(targetList.length / 2);
-    this.currentOffset = targetList.length % 2 !== 0 
-      ? targetList[mid] 
-      : (targetList[mid - 1] + targetList[mid]) / 2;
     this.currentRTT = rtt;
 
     if (this.onStatsUpdate) {
@@ -74,28 +72,28 @@ export class ClockSync {
   }
 
   /**
-   * Start initial multi-ping burst and set up periodic ping
+   * Start initial multi-ping burst and set up rapid periodic ping
    */
   public startSync() {
     this.isSyncing = true;
     this.offsetSamples = [];
     this.rttSamples = [];
 
-    // Burst ping (8 samples)
+    // Rapid burst ping (15 samples @ 40ms interval)
     let burstCount = 0;
     const burstTimer = setInterval(() => {
       this.sendPing();
       burstCount++;
-      if (burstCount >= 8) {
+      if (burstCount >= 15) {
         clearInterval(burstTimer);
       }
-    }, 150);
+    }, 40);
 
-    // Periodic ping every 10 seconds
+    // Rapid periodic refresh every 2 seconds
     if (this.intervalTimer) clearInterval(this.intervalTimer);
     this.intervalTimer = setInterval(() => {
       this.sendPing();
-    }, 10000);
+    }, 2000);
   }
 
   public stopSync() {
@@ -112,9 +110,6 @@ export class ClockSync {
     }
   }
 
-  /**
-   * Get current server time estimated on client
-   */
   public getServerTime(): number {
     return Date.now() + this.currentOffset;
   }

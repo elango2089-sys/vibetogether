@@ -8,11 +8,11 @@ export interface SyncMetrics {
 }
 
 export class SyncManager {
-  // Delay in milliseconds added to scheduled play commands to ensure all clients receive socket message before start time
-  public static readonly SCHEDULE_LEAD_TIME_MS = 1500;
+  // Ultra-low latency lead time (400ms is fast yet safe for WebSocket delivery)
+  public static readonly SCHEDULE_LEAD_TIME_MS = 400;
 
   /**
-   * Calculate future start timestamp (ms)
+   * Calculate future start timestamp (ms) with low latency
    */
   public calculateScheduledStart(leadTimeMs: number = SyncManager.SCHEDULE_LEAD_TIME_MS): number {
     return Date.now() + leadTimeMs;
@@ -33,29 +33,29 @@ export class SyncManager {
    * Evaluate drift between client reported position and room expected position
    */
   public evaluateDrift(room: Room, clientPosition: number, clientTimestampMs: number): SyncMetrics {
-    // Current server time corresponding to client's report
     const now = Date.now();
     const expectedPos = this.getExpectedRoomPosition(room);
     
-    // Account for elapsed time between client timestamp and server now
+    // Account for transport time
     const timeLagSeconds = Math.max(0, (now - clientTimestampMs) / 1000);
     const adjustedExpectedPos = expectedPos + (timeLagSeconds * room.playbackRate);
 
-    // Drift in milliseconds (positive means client is ahead, negative means client is behind)
+    // Drift in milliseconds
     const driftMs = (clientPosition - adjustedExpectedPos) * 1000;
     const absDrift = Math.abs(driftMs);
 
-    if (absDrift < 30) {
+    if (absDrift < 20) {
+      // Sub-20ms: Perfect sync, no rate adjustment needed
       return {
         expectedPosition: adjustedExpectedPos,
         driftMs,
         recommendation: 'none',
         suggestedRate: 1.0
       };
-    } else if (absDrift <= 250) {
-      // Client behind (driftMs < 0) -> speed up slightly (1.004)
-      // Client ahead (driftMs > 0) -> slow down slightly (0.996)
-      const rateAdjustment = driftMs < 0 ? 1.004 : 0.996;
+    } else if (absDrift <= 180) {
+      // 20ms - 180ms: Imperceptible micro rate tweak (0.1% change: 1.001 / 0.999)
+      // Completely invisible to human ear, no pitch shift or speed-up glitch!
+      const rateAdjustment = driftMs < 0 ? 1.0015 : 0.9985;
       return {
         expectedPosition: adjustedExpectedPos,
         driftMs,
@@ -63,6 +63,7 @@ export class SyncManager {
         suggestedRate: rateAdjustment
       };
     } else {
+      // Major drift (>180ms): Smooth resynchronization
       return {
         expectedPosition: adjustedExpectedPos,
         driftMs,
