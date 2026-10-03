@@ -1,4 +1,4 @@
-import { Room } from '../src/types/room.js';
+import { Room } from './types/room.js';
 
 export interface SyncMetrics {
   expectedPosition: number;

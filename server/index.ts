@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 import { RoomManager } from './room-manager.js';
 import { SyncManager } from './sync-manager.js';
-import { TrackInfo } from '../src/types/room.js';
+import { TrackInfo } from './types/room.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

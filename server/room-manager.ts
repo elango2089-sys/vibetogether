@@ -1,4 +1,4 @@
-import { Room, Device, TrackInfo, SpeakerPosition, Vector2D } from '../src/types/room.js';
+import { Room, Device, TrackInfo, SpeakerPosition, Vector2D } from './types/room.js';
 
 export class RoomManager {
   private rooms: Map<string, Room> = new Map(); // roomId -> Room
